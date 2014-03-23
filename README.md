@@ -1,4 +1,6 @@
 smart-fish
 ==========
 
-Taobao second kill plugin
+淘宝网1元秒杀，大促秒杀
+
+1. 安装方法
