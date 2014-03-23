@@ -1,0 +1,37 @@
+{
+    "name": "Smart Fish",
+    "manifest_version": 2,
+    "version": "1.0.6",
+    "description": "淘宝网-天天特价1元秒杀、活动秒杀",
+    "permissions": [
+        "tabs", 
+        "contextMenus", 
+        "notifications",
+        "management",
+        "http://*/*", 
+        "https://*/*"  
+    ],
+    "browser_action": {
+        "default_icon": "img/icon.png",
+        "default_title":"秒你所爱"/*,
+        "default_popup": "popup.htm"*/
+    }, 
+    /*"options_page": "options.htm",*/
+    "icons": {
+        "16": "img/icon.png", 
+        "48": "img/icon.png", 
+        "128": "img/icon.png" 
+    },
+    "web_accessible_resources": [
+        "media/sound.mp3",
+        "img/icon.png"
+    ],
+    "content_scripts": [
+        {
+          "matches": ["*://tejia.taobao.com/one.htm*", "*://miao.item.taobao.com/*"],
+          "css": ["css/m.css"],
+          "js": ["lib/jquery.js", "lib/UNIC-GBK.js", "js/m.js"],
+          "run_at" : "document_end"
+        }
+    ]
+}
