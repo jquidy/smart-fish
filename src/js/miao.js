@@ -1,5 +1,5 @@
 ﻿/*
- * 自动刷新抢宝 Smart Fish v1.0.6
+ * 自动刷新抢宝 Smart Fish v1.1.8
  * javascript.heliang@gmail.com
  *
  * 1. 支持空格提交
@@ -9,6 +9,7 @@
  * 5. 支持三字全拼时候输入的是中文情况下按下shift键自动提交（目前只支持Mac系统下的搜狗输入法）
  * 6. 支持秒杀开始后看不清问题，按下0键换题
  * 7. 秒杀成功后自动播放音乐
+ * 8. 支持全拼校正
  *
  */
 
@@ -58,20 +59,39 @@ jQuery.param = function( a, traditional ) {
         questUrl = 'http://m.ajax.taobao.com/qst.htm?id=',
 
         // 音乐文件地址
-        soundUrl = chrome.extension.getURL('/media/sound.mp3'),
+        musicUrl = chrome.runtime.getURL('/media/sound.mp3'),
         
         // 过滤不小心输入的特殊非法字符正则
         regexp = /[-_=+{}\[\]\|\\\:;"'<>,\.\?\/\d]/g,
 
         storage = localStorage,
 
+        isMac = /MacIntel/i.test(navigator.platform), 
+
+        server = 'http://m.jser.com:3000',
+
         head = document.head, 
 
-        body = document.body;
+        body = document.body,
+
+        // 
+        port = chrome.runtime.connect(),
+    
+        // 全拼答案列表
+        answers = {
+            49: 'songshumiao', // 1 松树苗    
+            50: 'wangjingxia' // 2 王静霞
+        };
 
     function SmartFish() {
+        // 距开始多少ms开始刷新
+        this.refreshStart = 2000;
+
         // 默认150ms刷新一次
         this.delay = 150;
+
+        // 提交卡时
+        this.submitDelay = 1750;
 
         // 定时器id 
         this.interval = 0;
@@ -143,10 +163,45 @@ jQuery.param = function( a, traditional ) {
 
             // 1元特价页面
             if (href.indexOf('tejia.taobao.com/one.htm') > -1) {
-                // TODO
+                this.saveId(); 
             } else if (href.indexOf('miao.item.taobao.com') > -1) { // 秒杀商品页面
                 this.domReady();
             }
+        },
+
+        // 更新本场商品id
+        saveId: function() {
+            var key,
+
+                value,
+                
+                // 列表商品id保存url
+                listUrl;
+
+            key = $('.time-line li.cur a').text();
+            value = [];
+            $('.filter-list-detail li').each(function() {
+                value.push($('dt a', this).attr('href').match(/id=(\d+)/)[1]);
+            });
+
+            // 保存商品id，等到秒杀开始时候去请求商品对应的问题图片
+            listUrl = server + '/list?time=' + key + '&ids=' + value.join(',');
+            this.ajax({url: listUrl}).done(function() {
+                // TODO 
+            });
+        },
+
+        getId: function() {
+            var that = this,
+            
+                ids,
+
+                url;
+
+            url = server + '/getId?time=' + this.minute;
+            this.ajax({url: url}).done(function(data) {
+                storage.setItem(that.minute, data.ids); 
+            });
         },
 
         // 依赖的元素是否准备好
@@ -154,17 +209,39 @@ jQuery.param = function( a, traditional ) {
             var that = this;
             
             if ($('.upper')[0]) {
+                this.getOpt();
                 this.prefetch();
                 this.initView();
                 this.getUpper();
+                this.getId();
                 this.syncTime();
                 this.initForm();
                 this.addEvent();
             } else {
                 setTimeout(function() {
-                    that.domReady();      
+                    that.domReady();
                 }, 1);
             }
+        },
+
+        // 配置信息
+        getOpt: function() {
+            var that = this;
+
+            // 获取设置信息
+            port.postMessage({type: 'update'});
+             
+            // 
+            port.onMessage.addListener(function(msg) {
+                that.refreshStart = msg.refreshStart ? parseInt(msg.refreshStart, 10) : that.refreshStart; 
+                that.delay = msg.refreshFrequency ? parseInt(msg.refreshFrequency, 10) : that.delay;
+                that.submitDelay = msg.submitDelay ? parseInt(msg.submitDelay, 10) : that.submitDelay;
+
+                // 是否启用全拼校正
+                if (!msg.regulate || msg.regulate !== 'enable') {
+                    that.spellCorrect = null;
+                }
+            });
         },
 
         // dns 预解析，提升接口请求、显示图片和提交订单速度
@@ -204,7 +281,6 @@ jQuery.param = function( a, traditional ) {
                 '<span id="answer-msg" class="answer-time">-</span>',
                 '</td>',
                 '</tr>',
-                '</tr>',
                 '<tr>',
                 '<td>',
                 '出图用时：',
@@ -214,7 +290,6 @@ jQuery.param = function( a, traditional ) {
                 '毫秒',
                 '</td>',
                 '</tr>',
-
                 '<tr>',
                 '<td>',
                 '答题用时：',
@@ -266,7 +341,7 @@ jQuery.param = function( a, traditional ) {
             $(body).append('<div id="doubleCheck" class="double-check"></div>');
 
             // 音乐播放器
-            $(body).append('<audio src="' + soundUrl + '" id="audio" class="audio"></audio>');
+            $(body).append('<audio src="' + musicUrl + '" id="audio" class="audio"></audio>');
             
             //
             this.selectSKU();
@@ -335,8 +410,9 @@ jQuery.param = function( a, traditional ) {
                         that.submit();
                         break;
                     case 16: // shift 键提交，适用于处于中文输入法状态，需要输入全拼的情况
+                        // 秒杀开始时候，shift提交功能生效
                         // 输入的是三字全拼，四字首字母情况
-                        if (that.answerInput && (that.answerInput.val() || '').split(/'/).length >= 3) {
+                        if (start && that.answerInput.val().length >= 3) {
                             that.submit();
                         }
                         break;
@@ -384,6 +460,14 @@ jQuery.param = function( a, traditional ) {
                         setTimeout(function() {
                             that.answerInput.val('');
                         }, 0);
+                        break;
+                    case 49:
+                    case 50:
+                        setTimeout(function() {
+                            that.answerInput.val(answers[e.keyCode]);
+
+                            that.submit();
+                        }, 10);
                         break;
                     default:
                         break;
@@ -525,22 +609,14 @@ jQuery.param = function( a, traditional ) {
         submit: function() {
             var that = this,
                 
-                button,
-                
                 // 秒杀结束时间
                 end,
                 
                 // 本次秒杀用时
                 time;
 
-            button = $('.J_Submit')[0];
-            // 首先检查是否有提交按钮     
-            if (!button) {
-                return; 
-            }
-
             // 检查是否有答案输入框
-            if (this.answerInput && $.trim(this.answerInput.val()) === '') {
+            if (this.answerInput && this.answerInput.val().trim() === '') {
                 return;
             }
 
@@ -555,10 +631,10 @@ jQuery.param = function( a, traditional ) {
             time = end - start;
 
             // 如果用时小于1810ms，则延迟到1810ms再提交
-            if (time < 1720) {
+            if (time < this.submitDelay) {
                 setTimeout(function() {
                     that.submitForm();
-                }, 1720 - time);
+                }, this.submitDelay - time);
             } else {
                 this.submitForm();
             }
@@ -571,7 +647,7 @@ jQuery.param = function( a, traditional ) {
             // 如果是拼音则只提交默认表单
             if (/[\u4e00-\u9fa5]/g.test(this.chinese)) {
                 // 输入的是两个汉字，则提交全拼
-                if (this.chinese.replace(/[^\x00-\xff]/g,"**").length === 4) {
+                if (this.chinese.replace(/[^\x00-\xff]/g, "**").length === 4) {
                     input.val(this.total);
                 } else {
                     // 三字中文，首字母、全拼情况
@@ -583,6 +659,12 @@ jQuery.param = function( a, traditional ) {
             input.val(value);
         },
 
+        // 拼音纠正
+        spellCorrect: function(value) {
+            return (value || '').replace(/gn/ig, 'ng').replace(/mg/ig, 'ng').replace(/iou/ig, 'iu').replace(/uei/ig, 'ui').replace(/uen/ig, 'un');
+        },
+
+        // 提交表单请求
         submitForm: function() {
             var that = this,
             
@@ -602,13 +684,18 @@ jQuery.param = function( a, traditional ) {
 
             input = this.answerInput;
 
-            value = $.trim(input.val());
+            value = input.val().trim();
+            // 全拼纠正功能
+            value = this.spellCorrect ? this.spellCorrect(value) : value;
 
-            // 
-            if (!this.sign || this.flag) {
+            // token
+            // 已提交过
+            // 值为空
+            if (!this.sign || this.flag || !value) {
                 return;
             }
 
+            // 
             url = stockUrl + this.itemId + '&skuId=' + $('#skuId').val() + '&an=' + value;
 
             // 正在进行库存验证
@@ -688,6 +775,9 @@ jQuery.param = function( a, traditional ) {
 
             // 避免反复提交
             this.flag = true;
+
+            // 日志信息显示到视线区域
+            this.logIntoView();
         },
 
         // 表单提交结果处理
@@ -754,14 +844,19 @@ jQuery.param = function( a, traditional ) {
                                     if (data && data.qst) {
                                         that.log.append('<tr><td>重新获取问题成功，请重新答题</td></tr>');
 
+                                        // 答题区域进入视线区域
+                                        that.qstIntoView();
+
                                         // 显示秒杀问题
                                         that.initQuest(data.qst);
 
                                         // 提交表单token
                                         that.sign = data.sign;
 
-                                        // 答案输入框获取焦点
-                                        that.answerInput.focus();
+                                        setTimeout(function() {
+                                            // 答案输入框获取焦点
+                                            that.answerInput.focus(); 
+                                        }, 10);
                                     } else {
                                         that.flag = true;
 
@@ -774,7 +869,42 @@ jQuery.param = function( a, traditional ) {
                                 this.flag = false;
                                 break;
                             case '1127': // 
-                                this.log.append('<tr><td>该宝贝秒杀只针对固定用户开放</td></tr>');
+                                this.log.append('<tr><td>该宝贝秒杀只针对固定用户开放，重新获取问题中...</td></tr>');
+
+                                // 清空答案，重新答题
+                                this.answerInput.val('').focus();
+
+                                // 重新获取秒杀问题
+                                this.getQuest().done(function(data) {
+                                    data = JSON.parse(data);
+
+                                    // 秒杀已经开始
+                                    if (data && data.qst) {
+                                        that.log.append('<tr><td>重新获取问题成功，请重新答题</td></tr>');
+
+                                        // 答题区域进入视线区域
+                                        that.qstIntoView();
+
+                                        // 显示秒杀问题
+                                        that.initQuest(data.qst);
+
+                                        // 提交表单token
+                                        that.sign = data.sign;
+
+                                        setTimeout(function() {
+                                            // 答案输入框获取焦点
+                                            that.answerInput.focus(); 
+                                        }, 10);
+                                    } else {
+                                        that.flag = true;
+
+                                        that.log.append('<tr><td>重新获取问题失败，秒杀已结束</td></tr>');
+                                    }
+                                }).always(function() {
+                                    // TODO 
+                                });
+
+                                this.flag = false;
                                 break;
                             case '1138':
                                 this.log.append('<tr><td>答案错误，重新获取问题中...</td></tr>');
@@ -790,14 +920,19 @@ jQuery.param = function( a, traditional ) {
                                     if (data && data.qst) {
                                         that.log.append('<tr><td>重新获取问题成功，请重新答题</td></tr>');
 
+                                        // 答题区域进入视线区域
+                                        that.qstIntoView();
+
                                         // 显示秒杀问题
                                         that.initQuest(data.qst);
 
                                         // 提交表单token
                                         that.sign = data.sign;
 
-                                        // 答案输入框获取焦点
-                                        that.answerInput.focus();
+                                        setTimeout(function() {
+                                            // 答案输入框获取焦点
+                                            that.answerInput.focus(); 
+                                        }, 10);
                                     } else {
                                         that.flag = true;
 
@@ -914,9 +1049,14 @@ jQuery.param = function( a, traditional ) {
                 time = t2 - t1;
 
                 // 还有20s时候开启自动刷新抢宝
-                if (time <= 20000) {
+                if (time <= this.refreshStart) {
                     // 启动刷新抢宝
                     this.refresh();
+                }
+
+                // 让焦点始终停留在答题输入框
+                if ($(':focus') !== this.answerInput) {
+                    this.answerInput.focus(); 
                 }
             }
         },
@@ -925,10 +1065,7 @@ jQuery.param = function( a, traditional ) {
             var that = this,
             
                 // 答案输入框
-                input,
-
-                // 刷新抢宝按钮
-                button;
+                input;
 
             if (!this.refreshing) {
                 this.getQuest().done(function(data) {
@@ -940,19 +1077,29 @@ jQuery.param = function( a, traditional ) {
                         that.initQuest(data.qst);
 
                         // 记录秒杀开始时间
+                        // 本地时间，秒杀实际开始时间
                         start = +new Date();
-
+                         
                         // 显示出图时间
                         $('#appear-time').text(data.now - that.upper.getTime());
 
+                        // 启动自动答题程序
+                        that.autoInput(data.qst);
+
                         // 提交表单token
                         that.sign = data.sign;
-
+                        
                         // 倒计时停止
                         that.stop();
 
-                        // 答案输入框获取焦点
-                        that.answerInput.focus();
+                        // 
+                        setTimeout(function() {
+                            // 答案输入框获取焦点
+                            that.answerInput.focus();
+                        }, 10);
+                        
+                        // 通知服务器获取这一时刻秒杀商品问题图片地址
+                        that.saveQuest();
                     }
                 }).always(function() {
                     // 成功或者失败都移除loading
@@ -963,6 +1110,7 @@ jQuery.param = function( a, traditional ) {
                 });
             } else {
                 // TODO 
+                return;
             }
 
             // 已经在刷新了，防止接口阻塞了还在刷新
@@ -982,6 +1130,92 @@ jQuery.param = function( a, traditional ) {
                 'background': 'url(' + qst + ') no-repeat center center #fff',
                 'border': 'none'
             });
+        },
+
+        saveQuest: function() {
+            var that = this,
+            
+                i,
+            
+                length,
+
+                id,
+
+                ids,
+                
+                dfds = [],
+                
+                r = [],
+                
+                saveUrl;
+
+            ids = (storage.getItem(this.minute) || '').split(',');
+            saveUrl = server + '/save?qst=';
+             
+            i = 0;
+            length = ids.length;
+            for (; i < length; i++) {
+                id = ids[i]; 
+
+                dfds.push(this.ajax({url: questUrl + id}));
+            }
+
+            $.when.apply(null, dfds).done(function() {
+                i = 0;
+                length = arguments.length;
+                
+                var data;
+                for (; i < length; i++) {
+                    data = JSON.parse(arguments[i][0]);
+
+                    data.qst && r.push(data.qst);
+                }
+
+                // 发送请求保存问题图片地址
+                that.ajax({url: saveUrl + r.join(',')}).done(function(data) {
+                    if (data.status) {
+                        console.log(data.statusText);
+                    }
+                }).fail(function() {
+                    console.log(r.join(','));
+                });
+            });
+        },
+
+        // 自动答题
+        autoInput: function(qst) {
+            var that = this,
+            
+                // 获取答案接口地址
+                url;
+                
+            url = server + '/getAnswer?qst=' + qst;
+
+            this.ajax({url: url}).done(function(data) {
+                // 匹配到该问题对应的答案，锁定用户答题操作
+                if (data.status && data.answer) {
+                    that.answerInput.val(data.answer);
+
+                    // 提交表单
+                    that.submit();
+
+                    // 锁定用户提交操作
+                    that.lock();
+                } else {
+                    // TODO 没有匹配到答案自动答题失败
+                }
+            });
+        },
+
+        lock: function() {
+            var elem,
+            
+                offset;
+
+            elem = $('.tb-wrap').first();
+            offset = elem.offset();
+             
+            $('<div>正在进行自动答题，请不要操作...</div>').css({position: 'absolute', left: offset.left, top: offset.top, opacity: 0.6, width: elem.width(), height: elem.height(), 'line-height': elem.height(), 'text-align': 'center', background: '#000', 'z-index': 999999, color: '#fff'}).appendTo(body);
         },
 
         initForm: function() {
@@ -1006,33 +1240,43 @@ jQuery.param = function( a, traditional ) {
                 str,
                 letters;
 
-            if ($.trim(value) === '') { // 清空首字母、全拼、中文
+            if (value.trim() === '') { // 清空首字母、全拼、中文
                 this.first = ''; 
                 this.total = ''; 
                 this.chinese = '';
             } else if (/^\w+'/.test(value)) { // 是否是 shan'li'lai  这种形式 
                 this.pinyin = value;
             } else { // 山里来 这种形式
-                this.chinese = value.replace(regexp, '').toLowerCase();
+                // 是否是Max OS
+                if (isMac) {
+                    this.chinese = value.trim().replace(regexp, '').toLowerCase();
 
-                // 输入了中文说明本次输入结束 
-                if (this.pinyin) {
-                    // 全拼字母
-                    str = this.pinyin;
-                    letters = str.split("'"); 
+                    // 输入了中文说明本次输入结束 
+                    if (this.pinyin) {
+                        // 全拼字母
+                        str = this.pinyin;
+                        letters = str.split("'"); 
 
-                    // 赋值前先清空
-                    this.first = '';
-                    $.each(letters, function(i, letter) {
-                        // 首字母
-                        that.first += letter.charAt(0);
-                    });
+                        // 赋值前先清空
+                        this.first = '';
+                        $.each(letters, function(i, letter) {
+                            // 首字母
+                            that.first += letter.charAt(0);
+                        });
 
-                    // 过滤掉不小心输错的字符、大写转化为小写
-                    this.first = this.first.replace(regexp, '').toLowerCase();
-                    
-                    // 全拼
-                    this.total = str.replace(/'/g, '').replace(regexp, '').toLowerCase();
+                        // 过滤掉不小心输错的字符、大写转化为小写
+                        this.first = this.first.trim().replace(regexp, '').toLowerCase();
+
+                        // 全拼
+                        this.total = str.trim().replace(/'/g, '').replace(regexp, '').toLowerCase();
+                    }
+                } else { // Windows
+                    // 全部是中文说明本次输入结束
+                    if (/^[\u4E00-\u9FA5]+$/.test(value)) {
+                        this.chinese = value.trim().replace(regexp, '').toLowerCase();
+                    } else {
+                        this.total = value; 
+                    }
                 }
             }
         },
@@ -1073,6 +1317,64 @@ jQuery.param = function( a, traditional ) {
 
         formatDate: function(value) {
             return (value + '').length > 1 ? value : '0' + value;
+        },
+
+        // 重新答题能够立刻看到问题
+        qstIntoView: function() {
+            var elem,
+            
+                value,
+                
+                height;
+
+            height = 100;
+            elem = $('html');
+
+            value = elem.data('scrollTop') - height;
+
+            // 恢复之前位置，重新答题
+            elem.animate({
+                scrollTop: value 
+            }, 100, function() {
+                // TODO
+            });
+        },
+
+        // 答完题之后立刻能看到日志信息 
+        logIntoView: function() {
+            var top1,
+            
+                top2,
+
+                elem,
+
+                old,
+
+                value,
+                
+                height;
+
+            height = 100;
+            // 问题top值
+            top1 = this.questImg.offset().top;
+
+            // 日志信息top值
+            top2 = $('#secKillLog').offset().top;
+
+            value = top2 - top1;
+
+            elem = $('html');
+            old = elem.scrollTop() + height;
+
+            // 恢复时候使用
+            elem.data('scrollTop', old);
+
+            // 以动画形式变化
+            elem.animate({
+                scrollTop: '+=' + (value + height)
+            }, 200, function() {
+                // TODO 
+            });
         },
 
         // 秒杀成功之后播放音乐

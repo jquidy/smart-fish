@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <title>参数设置</title>
+        <link rel="stylesheet" type="text/css" href="../css/options.css" />
+        <script src="../lib/jquery.js"></script>
+    </head>
+    <body>
+        <div class="page smart-fish-setting">
+            <div class="content">
+                <div class="overlay" id="overlay">
+                    <h2>参数 - 设置</h2>	
+                    <div class="setting-area">
+                        <form class="setting-form"> 
+                            <div class="item"> 
+                                <label for="refreshStart">距开始还有多少时间开始刷新：</label>
+                                <input type="text" class="txt" id="refreshStart" name="refreshStart" value="20000" />（毫秒）
+                            </div>
+                            <div class="item"> 
+                                <label for="refreshFrequency">自动刷新间隔：</label>
+                                <input type="text" class="txt" id="refreshFrequency" name="refreshFrequency" value="150" />（推荐）
+                            </div>
+                            <div class="item">
+                                <label for="submitDelay">提交卡时：</label>
+                                <input type="text" class="txt" id="submitDelay" name="submitDelay" value="1750" />（毫秒）
+                            </div>
+                            <div class="item">
+                                <dl class="py-regulate">
+                                    <dt>全拼校正：</dt>
+                                    <dd>
+                                        <input type="radio" checked  name="regulate" value="enable" /> 启用
+                                    </dd>
+                                    <dd>
+                                        <input type="radio" name="regulate" value="disable" /> 禁用
+                                    </dd>
+                                </dl>
+                            </div>
+                            <div class="item">
+                                <dl class="music-list">
+                                    <dt>抢拍成功后播放音乐：</dt>
+                                    <dd>
+                                        <input type="radio" checked name="music-name" value="001" /> 兰花指 
+                                    </dd>
+                                    <dd>
+                                        <input type="radio" disabled name="music-name" value="002" /> ... 
+                                    </dd>
+                                    <dd>
+                                        <input type="radio" disabled name="musice-name" value="003" /> ... 
+                                    </dd>
+                                    <dd>
+                                        <input type="radio" disabled name="musice-name" value="004" /> ... 
+                                    </dd> 
+                                    <dd>
+                                        <input type="radio" disabled name="musice-name" value="005" /> ... 
+                                    </dd>
+                                    <dd>
+                                        <input type="radio" disabled name="musice-name" value="006" /> ... 
+                                    </dd>
+                                </dl>
+                            </div>
+                            <div class="item">
+                                <button class="submit-button" id="setting-submit" type="button">保存设置</button>
+                                <div class="succ-msg">设置成功</div>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <script src="../js/options.js"></script>
+    </body>
+</html>
+

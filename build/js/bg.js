@@ -1,0 +1,1 @@
+(function(){var e=localStorage;chrome.runtime.onConnect.addListener(function(a){a.onMessage.addListener(function(f){switch(f.type){case"update":a.postMessage({refreshStart:e["refreshStart"],refreshFrequency:e["refreshFrequency"],submitDelay:e["submitDelay"],regulate:e["regulate"]});break;default:break}})})})();
